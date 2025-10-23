@@ -4,3 +4,45 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.5.50", features = ["derive"] }
+sysinfo = "0.37.2"
+ctrlc = "3.5.0"
+
+[dependencies.windows-sys]
+version = "0.61.2"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+
+]
+
+# ============================================================================
+# RELEASE PROFILE - MAXIMUM SIZE OPTIMIZATION
+# ============================================================================
+[profile.release]
+opt-level = "z"          # Optimize for minimum binary size
+lto = true               # Enable Link Time Optimization
+codegen-units = 1        # Better optimization, slower compile
+strip = true             # Remove debug symbols
+panic = "abort"          # No unwinding (smaller binary)
+incremental = false      # Disable for release builds
+
+# ============================================================================
+# BUILD INSTRUCTIONS
+# ============================================================================
+#
+# Build optimized release:
+#   cargo build --release
+#
+# The executable will be at: target/release/SetTimerResolution.exe
+#
+# Expected size: ~200-400 KB (compared to original C++ ~100KB)
+# With UPX compression: ~100-150 KB
+#
+# Run tests:
+#   cargo test
+#   cargo test -- --ignored  (for integration tests)
+#
+# ============================================================================
