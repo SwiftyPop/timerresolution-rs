@@ -1,22 +1,23 @@
 /// MeasureSleep - Windows Timer Resolution Measurement Tool
 ///
 /// Measures the accuracy of Windows Sleep() function under different timer resolutions.
-/// Rewritten in Rust
+/// This tool is essential for benchmarking timer precision and system latency.
 ///
 /// License: GPLv3
 /// Original: https://github.com/valleyofdoom
-
 use clap::Parser;
 use std::io::{self, Write};
 use std::mem;
 use std::ptr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
-use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, OpenProcessToken, SetPriorityClass, REALTIME_PRIORITY_CLASS,
+use windows_sys::Win32::Security::{
+    GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcessToken, REALTIME_PRIORITY_CLASS, SetPriorityClass, Sleep,
+};
 
 // ============================================================================
 // Windows API Definitions
@@ -41,7 +42,7 @@ fn is_admin() -> bool {
         }
 
         let mut elevation: TOKEN_ELEVATION = mem::zeroed();
-        let mut size = size_of::<TOKEN_ELEVATION>() as u32;
+        let mut size = mem::size_of::<TOKEN_ELEVATION>() as u32;
 
         let result = GetTokenInformation(
             token,
@@ -49,7 +50,8 @@ fn is_admin() -> bool {
             &mut elevation as *mut _ as *mut _,
             size,
             &mut size,
-        ) != 0 && elevation.TokenIsElevated != 0;
+        ) != 0
+            && elevation.TokenIsElevated != 0;
 
         windows_sys::Win32::Foundation::CloseHandle(token);
         result
@@ -113,9 +115,14 @@ impl SleepMeasurement {
         let resolution_ms = current_resolution as f64 / 10_000.0;
 
         let start = Instant::now();
-        std::thread::sleep(Duration::from_millis(sleep_duration_ms as u64));
-        let elapsed = start.elapsed();
 
+        // CRITICAL: Use Windows Sleep() API directly (not std::thread::sleep)
+        // This is affected by timer resolution, which is what we want to measure
+        unsafe {
+            Sleep(sleep_duration_ms);
+        }
+
+        let elapsed = start.elapsed();
         let actual_sleep_ms = elapsed.as_secs_f64() * 1000.0;
         let delta_ms = actual_sleep_ms - sleep_duration_ms as f64;
 
@@ -165,10 +172,8 @@ impl Statistics {
         let avg = sum / sample_count as f64;
 
         // Calculate standard deviation
-        let variance: f64 = deltas
-            .iter()
-            .map(|&x| (x - avg).powi(2))
-            .sum::<f64>() / (sample_count - 1) as f64;
+        let variance: f64 =
+            deltas.iter().map(|&x| (x - avg).powi(2)).sum::<f64>() / (sample_count - 1) as f64;
         let stdev = variance.sqrt();
 
         Some(Self {
@@ -196,8 +201,8 @@ impl Statistics {
 #[derive(Parser, Debug)]
 #[command(
     name = "MeasureSleep",
-    version = "0.1.2",
-    about = "Windows Sleep() Accuracy Measurement Tool - MIT",
+    version = "2.0.0",
+    about = "Windows Sleep() Accuracy Measurement Tool - GPLv3",
     long_about = "Measures the accuracy of Windows Sleep() function under different timer resolutions.\nGitHub: https://github.com/valleyofdoom"
 )]
 struct Args {
@@ -240,7 +245,10 @@ fn run_continuous_measurement(sleep_n: u32, verbose: bool) -> io::Result<()> {
             io::stdout().flush()?;
         }
 
-        std::thread::sleep(Duration::from_secs(1));
+        // Use Windows Sleep() API for consistency
+        unsafe {
+            Sleep(1000);
+        }
     }
 }
 
@@ -262,7 +270,10 @@ fn run_sampled_measurement(sleep_n: u32, samples: usize, verbose: bool) -> io::R
         deltas.push(measurement.delta_ms);
 
         if i < samples {
-            std::thread::sleep(Duration::from_millis(100));
+            // Use Windows Sleep() API for consistency
+            unsafe {
+                Sleep(100);
+            }
         }
     }
 
@@ -428,9 +439,10 @@ mod integration_tests {
         assert!(measurement.is_ok(), "Sleep measurement failed");
 
         if let Ok(m) = measurement {
-            // Sleep(1) should sleep roughly 1-2ms
+            // With default timer resolution, Sleep(1) should sleep ~15ms
+            // With high resolution, it should be closer to 1-2ms
             assert!(m.actual_sleep_ms > 0.0);
-            assert!(m.actual_sleep_ms < 10.0, "Sleep took too long");
+            assert!(m.actual_sleep_ms < 20.0, "Sleep took too long");
         }
     }
 
@@ -438,8 +450,8 @@ mod integration_tests {
     #[ignore]
     fn test_admin_check() {
         // This test needs to be run with admin privileges
-        let is_admin = is_admin();
-        println!("Running as admin: {}", is_admin);
+        let admin = is_admin();
+        println!("Running as admin: {}", admin);
         // Just verify it doesn't panic
     }
 }
