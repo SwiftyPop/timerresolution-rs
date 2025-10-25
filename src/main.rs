@@ -238,8 +238,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Display header
     if !args.no_console {
         println!("╔═══════════════════════════════════════════════════╗");
-        println!("║   SetTimerResolution v0.1.0 - Rust Edition       ║");
-        println!("║   Windows Timer Resolution Control               ║");
+        println!("║   SetTimerResolution v0.1.0 - Rust Edition        ║");
+        println!("║   Windows Timer Resolution Control                ║");
         println!("╚═══════════════════════════════════════════════════╝\n");
     }
 
